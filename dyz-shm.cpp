@@ -17,7 +17,6 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <cairo.h>
 #include <inttypes.h>
 #include <cstdio>
 #include <cstdlib>
@@ -25,58 +24,10 @@
 #include <cstring>
 #include <cerrno>
 
-
-struct Surface {
-public:
-    Surface(cairo_surface_t* surface) : m_surface(surface) {
-        g_return_if_fail(m_surface != nullptr);
-    }
-
-    ~Surface() {
-        cairo_surface_destroy(m_surface);
-        m_surface = nullptr;
-    }
-
-    inline cairo_surface_t* get() { return m_surface; }
-    inline operator bool() const { return status() != CAIRO_STATUS_SUCCESS; }
-    inline cairo_status_t status() const { return cairo_surface_status(m_surface); }
-
-private:
-    Surface(const Surface&) = delete;
-    void operator=(const Surface&) = delete;
-
-    cairo_surface_t* m_surface { nullptr };
-};
+#include "util/cairo.hh"
 
 
-struct Cairo {
-public:
-    explicit Cairo(Surface& surface) : m_ctx(cairo_create(surface.get())) {
-        g_return_if_fail(status() != CAIRO_STATUS_SUCCESS);
-    }
 
-    ~Cairo() {
-        cairo_destroy(m_ctx);
-        m_ctx = nullptr;
-    }
-
-    inline cairo_t* get() { return m_ctx; }
-    inline operator bool() const { return status() != CAIRO_STATUS_SUCCESS; }
-    inline cairo_status_t status() const { return cairo_status(m_ctx); }
-
-    inline void setSource(Surface& surface, double x = 0.0, double y = 0.0) {
-        cairo_set_source_surface(m_ctx, surface.get(), x, y);
-    }
-    inline void paint() {
-        cairo_paint(m_ctx);
-    }
-
-private:
-    Cairo(const Cairo&) = delete;
-    void operator=(const Cairo&) = delete;
-
-    cairo_t* m_ctx { nullptr };
-};
 
 
 struct FrameBuffer {
@@ -170,7 +121,7 @@ public:
     inline const char* errorMessage() const { return m_errorMessage; }
     inline const char* errorCause() const { return m_errorCause; }
     inline const char* devicePath() const { return m_devicePath; }
-    inline Surface& surface() {
+    inline cairo::Surface& surface() {
         g_assert(m_surface != nullptr);
         return *m_surface;
     }
@@ -188,11 +139,11 @@ protected:
     }
 
     bool createSurface() {
-        m_surface = new Surface(cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
-                                                                    CAIRO_FORMAT_RGB16_565,
-                                                                    xres(),
-                                                                    yres(),
-                                                                    stride()));
+        m_surface = new cairo::Surface(cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
+                                                                           CAIRO_FORMAT_RGB16_565,
+                                                                           xres(),
+                                                                           yres(),
+                                                                           stride()));
         return m_surface->status() == CAIRO_STATUS_SUCCESS;
     }
 
@@ -204,7 +155,7 @@ private:
     struct fb_var_screeninfo m_varInfo { };
     struct fb_fix_screeninfo m_fixInfo { };
     const char* m_devicePath;
-    Surface* m_surface { nullptr };
+    cairo::Surface* m_surface { nullptr };
 };
 
 
@@ -230,11 +181,11 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
                    buffer->height,
                    buffer->stride);
 
-        Surface image { cairo_image_surface_create_for_data(static_cast<unsigned char*>(buffer->data),
-                                                            CAIRO_FORMAT_ARGB32,
-                                                            buffer->width,
-                                                            buffer->height,
-                                                            buffer->stride) };
+        cairo::Surface image { cairo_image_surface_create_for_data(static_cast<unsigned char*>(buffer->data),
+                                                                   CAIRO_FORMAT_ARGB32,
+                                                                   buffer->width,
+                                                                   buffer->height,
+                                                                   buffer->stride) };
         if (!image) {
             g_printerr("Could not create cairo surface for SHM buffer\n");
             return;
@@ -250,7 +201,7 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
         }
 
         auto* viewData = reinterpret_cast<ViewData*>(data);
-        Cairo context { viewData->framebuffer.surface() };
+        cairo::Context context { viewData->framebuffer.surface() };
         context.setSource(image);
         context.paint();
 
