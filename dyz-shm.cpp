@@ -24,10 +24,16 @@
 #include <cstring>
 #include <cerrno>
 
-#include "util/cairo.hh"
+#include "cairo.hh"
 
 
+static bool  sDebug = false;
+static char* sPNGPath = nullptr;
 
+#define DEBUG(args) \
+    do { \
+        if (sDebug) { g_printerr args ; } \
+    } while (0)
 
 
 struct FrameBuffer {
@@ -170,16 +176,15 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
     // export_buffer
     [](void* data, struct wpe_view_backend_exportable_shm_buffer* buffer)
     {
-        g_printerr("export_buffer() %p\n",
-                   buffer);
-        g_printerr("  buffer_resource %p buffer %p\n",
-                   buffer->buffer_resource,
-                   buffer->buffer);
-        g_printerr("  data %p (%d,%d) stride %d\n",
-                   buffer->data,
-                   buffer->width,
-                   buffer->height,
-                   buffer->stride);
+        DEBUG(("export_buffer() %p\n", buffer));
+        DEBUG(("  buffer_resource %p buffer %p\n",
+               buffer->buffer_resource,
+               buffer->buffer));
+        DEBUG(("  data %p (%d,%d) stride %d\n",
+               buffer->data,
+               buffer->width,
+               buffer->height,
+               buffer->stride));
 
         cairo::Surface image { cairo_image_surface_create_for_data(static_cast<unsigned char*>(buffer->data),
                                                                    CAIRO_FORMAT_ARGB32,
@@ -191,13 +196,12 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
             return;
         }
 
-        const char* png_image_path = getenv("WPE_DUMP_PNG_PATH");
-        if (png_image_path) {
-            char filename[128];
+        if (sPNGPath) {
+            char filename[PATH_MAX];
             static int files = 0;
-            sprintf(filename, "%sdump_%d.png", png_image_path, files++);
+            snprintf(filename, PATH_MAX, "%s/dump_%d.png", sPNGPath, files++);
             cairo_surface_write_to_png(image.get(), filename);
-            g_printerr("dump image data to %s\n", png_image_path);
+            g_printerr("dump image data to %s\n", filename);
         }
 
         auto* viewData = reinterpret_cast<ViewData*>(data);
@@ -212,6 +216,9 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
 int main()
 {
+    sDebug = getenv("WPE_DYZSHM_DEBUG") != nullptr;
+    sPNGPath = getenv("WPE_DUMP_PNG_PATH");
+
     FrameBuffer framebuffer;
     if (!framebuffer) {
         g_printerr("Cannot initialize framebuffer: %s (%s)\n",
@@ -220,15 +227,15 @@ int main()
         return EXIT_FAILURE;
     }
 
-    g_printerr("Framebuffer '%s' @ %" PRIu32 "x%" PRIu32 " %" PRIu32 "bpp"
-               " (stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
-               framebuffer.devicePath(),
-               framebuffer.xres(),
-               framebuffer.yres(),
-               framebuffer.bpp(),
-               framebuffer.stride(),
-               framebuffer.size(),
-               framebuffer.constData());
+    DEBUG(("Framebuffer '%s' @ %" PRIu32 "x%" PRIu32 " %" PRIu32 "bpp"
+           " (stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
+           framebuffer.devicePath(),
+           framebuffer.xres(),
+           framebuffer.yres(),
+           framebuffer.bpp(),
+           framebuffer.stride(),
+           framebuffer.size(),
+           framebuffer.constData()));
 
     GMainLoop* loop = g_main_loop_new(g_main_context_default(), FALSE);
 
