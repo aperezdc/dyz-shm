@@ -269,8 +269,7 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
 #if USE_CAIRO
         cairo::Context context { viewData->framebuffer.surface() };
-        context.setSource(image);
-        context.paint();
+        context.rotate(image, cairo::Rotation::ClockWise90).source(image).paint();
 #else
         ::pixman_image_composite(PIXMAN_OP_SRC,
                                  image.pointer(),

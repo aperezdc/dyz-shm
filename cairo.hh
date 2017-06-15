@@ -10,6 +10,7 @@
 
 #include <cairo.h>
 #include <glib.h>
+#include <cmath>
 
 
 namespace cairo {
@@ -44,6 +45,10 @@ namespace cairo {
         Ref(const Ref&) = delete;
         void operator=(const Ref&) = delete;
 
+        inline Type* getMutableConst() const {
+            return const_cast<Type*>(m_pointer);
+        }
+
     private:
         Type* m_pointer;
     };
@@ -54,6 +59,28 @@ namespace cairo {
                                ::cairo_surface_destroy> {
     public:
         Surface(Ref::Type* surface) : Ref(surface) { }
+
+        inline uint32_t width() const {
+            auto value = ::cairo_image_surface_get_width(getMutableConst());
+            return (value < 0) ? 0 : static_cast<uint32_t>(value);
+        }
+        inline uint32_t height() const {
+            auto value = ::cairo_image_surface_get_height(getMutableConst());
+            return (value < 0) ? 0 : static_cast<uint32_t>(value);
+        }
+    };
+
+
+    enum Rotation {
+        None = 0,
+        ClockWise90,
+        ClockWise180,
+        ClockWise270,
+        ClockWise360 = None,
+        CounterClockWise90 = ClockWise270,
+        CounterClockWise180 = ClockWise180,
+        CounterClockWise270 = ClockWise90,
+        CounterClockWise360 = None,
     };
 
 
@@ -63,10 +90,35 @@ namespace cairo {
     public:
         explicit Context(Surface& surface) : Ref(cairo_create(surface.get())) { }
 
-        inline void setSource(Surface& surface, double x = 0.0, double y = 0.0) {
-            cairo_set_source_surface(get(), surface.get(), x, y);
+        inline Context& source(Surface& surface, double x = 0.0, double y = 0.0) {
+            ::cairo_set_source_surface(get(), surface.get(), x, y);
+            return *this;
         }
-        inline void paint() { cairo_paint(get()); }
+
+        inline Context& rotate(const Surface& surface, Rotation angle) {
+            switch (angle) {
+                case Rotation::ClockWise90:
+                    ::cairo_translate(get(), surface.height(), 0);
+                    ::cairo_rotate(get(), 90.0 * M_PI / 180.0);
+                    break;
+                case Rotation::ClockWise180:
+                    ::cairo_translate(get(), surface.width(), surface.height());
+                    ::cairo_rotate(get(), 180.0 * M_PI / 180.0);
+                    break;
+                case Rotation::ClockWise270:
+                    ::cairo_translate(get(), 0, surface.width());
+                    ::cairo_rotate(get(), 270.0 * M_PI / 180.0);
+                    break;
+                default:  // No rotation.
+                    break;
+            }
+            return *this;
+        }
+
+        inline Context& paint() {
+            ::cairo_paint(get());
+            return *this;
+        }
     };
 
 } // namespace cairo
