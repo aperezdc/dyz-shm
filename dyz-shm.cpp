@@ -288,7 +288,7 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
     },
 };
 
-int main()
+int main(int argc, char *argv[])
 {
     if (auto value = getenv("WPE_DYZSHM_DEBUG")) {
         sDebug = strcmp(value, "0") != 0;
@@ -340,7 +340,7 @@ int main()
     auto view = WKViewCreateWithViewBackend(backend, pageConfiguration);
 
     {
-        auto shellURL = WKURLCreateWithUTF8CString("http://localhost:3000");
+        auto shellURL = WKURLCreateWithUTF8CString((argc > 1) ? argv[1] : "http://igalia.com");
         WKPageLoadURL(WKViewGetPage(view), shellURL);
         WKRelease(shellURL);
     }
