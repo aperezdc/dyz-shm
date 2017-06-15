@@ -177,19 +177,19 @@ protected:
 
     bool createSurface() {
 #ifdef USE_CAIRO
-        m_surface = std::make_unique<SurfaceType>(
+        m_surface.reset(new SurfaceType(
             ::cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
                                                   CAIRO_FORMAT_RGB16_565,
                                                   xres(),
                                                   yres(),
-                                                  stride()));
+                                                  stride())));
         return m_surface->status() == CAIRO_STATUS_SUCCESS;
 #else
-        m_surface.reset(new pixman::Image(PIXMAN_r5g6b5,
-                                          xres(),
-                                          yres(),
-                                          m_buffer,
-                                          stride()));
+        m_surface.reset(new SurfaceType(PIXMAN_r5g6b5,
+                                        xres(),
+                                        yres(),
+                                        m_buffer,
+                                        stride()));
         return !!m_surface;
 #endif
     }
