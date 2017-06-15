@@ -32,12 +32,12 @@ namespace cairo {
 
         inline Type* get() { return m_pointer; }
         inline Status status() const { return do_get_status(m_pointer); }
-        inline operator bool() const { return status() != CAIRO_STATUS_SUCCESS; }
+        inline operator bool() const { return status() == CAIRO_STATUS_SUCCESS; }
 
     protected:
         explicit Ref(Type* pointer) : m_pointer(pointer) {
             g_return_if_fail(m_pointer != nullptr);
-            g_return_if_fail(status() != CAIRO_STATUS_SUCCESS);
+            g_return_if_fail(status() == CAIRO_STATUS_SUCCESS);
         }
 
         Ref(const Ref&) = delete;
