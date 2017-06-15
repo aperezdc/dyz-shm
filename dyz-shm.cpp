@@ -20,11 +20,16 @@
 #include <inttypes.h>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <utility>
 #include <cstring>
 #include <cerrno>
 
+#ifdef USE_CAIRO
 #include "cairo.hh"
+#else
+#include "pixman.hh"
+#endif
 
 
 static bool  sDebug = false;
@@ -38,9 +43,19 @@ static char* sPNGPath = nullptr;
 
 struct FrameBuffer {
 public:
+#ifdef USE_CAIRO
+    using SurfaceType = cairo::Surface;
+    static constexpr const char* imageBackend { "cairo" };
+#else
+    using SurfaceType = pixman::Image;
+    static constexpr const char* imageBackend { "pixman" };
+#endif
+
     FrameBuffer(const char* devicePath = nullptr) : m_devicePath(devicePath) {
         if (!m_devicePath) {
-            if (!(m_devicePath = getenv("WPE_FBDEV"))) {
+            if (auto value = getenv("WPE_FBDEV")) {
+                m_devicePath = value;
+            } else {
                 m_devicePath = "/dev/fb0";
             }
         }
@@ -52,57 +67,66 @@ public:
             markError("open", errno);
             return;
         }
+        DEBUG(("Framebuffer '%s' fd: %i\n", m_devicePath, m_fd));
 
         if (!updateScreenInfo())
             return;
+        DEBUG(("Framebuffer '%s' smem_len = %" PRIu32 "\n",
+               m_devicePath, m_fixInfo.smem_len));
 
         int retcode;
         do {
             retcode = ioctl(m_fd, FBIOBLANK, FB_BLANK_UNBLANK);
-        } while (retcode == -1 && errno == EINTR);
-        if (retcode == -1) {
+        } while (retcode < 0 && errno == EINTR);
+        if (retcode < 0) {
             markError("ioctl FBIOBLANK FB_BLANK_UNBLANK", errno);
             return;
         }
+        DEBUG(("Framebuffer '%s' unblanked\n", m_devicePath));
 
         if (size() > m_fixInfo.smem_len) {
             markError("mmap", "size to mmap bigger than framebuffer size");
             return;
         }
 
-        if ((m_buffer = mmap(nullptr, size(), PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0)) == MAP_FAILED) {
+        m_buffer = mmap(nullptr, size(), PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0);
+        if (m_buffer == MAP_FAILED || !m_buffer) {
             markError("mmap", errno);
             return;
         }
 
         if (!createSurface()) {
-            markError("cairo", "Cannot create device surface");
+            markError(imageBackend, "Cannot create device surface");
             return;
         }
+
+#if USE_CAIRO
+#else
+        m_surface->setTransform(pixman::Transform::rotate(90));
+#endif
     }
 
     bool updateScreenInfo() {
         int retcode;
         do {
             retcode = ioctl(m_fd, FBIOGET_FSCREENINFO, &m_fixInfo);
-        } while (retcode == -1 && errno == EINTR);
-        if (retcode == -1) {
+        } while (retcode < 0 && errno == EINTR);
+        if (retcode < 0) {
             markError("ioctl FBIOGET_FSCREENINFO", errno);
             return false;
         }
 
         do {
             retcode = ioctl(m_fd, FBIOGET_VSCREENINFO, &m_varInfo);
-        } while (retcode == -1 && errno == EINTR);
-        if (retcode == -1) {
+        } while (retcode < 0 && errno == EINTR);
+        if (retcode < 0) {
             markError("ioctl FBIOGET_VSCREENINFO", errno);
             return false;
         }
+        return true;
     }
 
     ~FrameBuffer() {
-        delete m_surface;
-
         if (m_buffer) {
             munmap(m_buffer, size());
             m_buffer = nullptr;
@@ -121,13 +145,19 @@ public:
     inline uint32_t xres() const { return m_varInfo.xres; }
     inline uint32_t yres() const { return m_varInfo.yres; }
     inline uint32_t bpp() const { return m_varInfo.bits_per_pixel; }
+    inline uint32_t rotation() const { return m_varInfo.rotate; }
 
-    inline operator bool() const { return m_fd != -1 && !errored(); }
-    inline bool errored() const { return !!m_errorMessage; }
+    bool setRotation(uint32_t rotation) {
+        m_varInfo.rotate = rotation;
+        return applyVarInfo();
+    }
+
+    inline bool errored() const { return m_errorCause || m_errorMessage; }
     inline const char* errorMessage() const { return m_errorMessage; }
     inline const char* errorCause() const { return m_errorCause; }
     inline const char* devicePath() const { return m_devicePath; }
-    inline cairo::Surface& surface() {
+
+    inline SurfaceType& surface() {
         g_assert(m_surface != nullptr);
         return *m_surface;
     }
@@ -137,6 +167,7 @@ protected:
     void operator=(const FrameBuffer&) = delete; // Prevent assignment.
 
     void markError(const char* cause, const char* message) {
+        DEBUG(("Framebuffer error: %s (%s)\n", message, cause));
         m_errorCause = cause;
         m_errorMessage = message;
     }
@@ -145,12 +176,30 @@ protected:
     }
 
     bool createSurface() {
-        m_surface = new cairo::Surface(cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
-                                                                           CAIRO_FORMAT_RGB16_565,
-                                                                           xres(),
-                                                                           yres(),
-                                                                           stride()));
+#ifdef USE_CAIRO
+        m_surface = std::make_unique<SurfaceType>(
+            ::cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
+                                                  CAIRO_FORMAT_RGB16_565,
+                                                  xres(),
+                                                  yres(),
+                                                  stride()));
         return m_surface->status() == CAIRO_STATUS_SUCCESS;
+#else
+        m_surface.reset(new pixman::Image(PIXMAN_r5g6b5,
+                                          xres(),
+                                          yres(),
+                                          m_buffer,
+                                          stride()));
+        return !!m_surface;
+#endif
+    }
+
+    bool applyVarInfo() {
+        int retcode;
+        do {
+            retcode = ioctl(m_fd, FBIOPUT_VSCREENINFO, &m_varInfo);
+        } while (retcode < 0 && errno == EINTR);
+        return retcode >= 0;
     }
 
 private:
@@ -161,7 +210,8 @@ private:
     struct fb_var_screeninfo m_varInfo { };
     struct fb_fix_screeninfo m_fixInfo { };
     const char* m_devicePath;
-    cairo::Surface* m_surface { nullptr };
+
+    std::unique_ptr<SurfaceType> m_surface { nullptr };
 };
 
 
@@ -186,6 +236,7 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
                buffer->height,
                buffer->stride));
 
+#if USE_CAIRO
         cairo::Surface image { cairo_image_surface_create_for_data(static_cast<unsigned char*>(buffer->data),
                                                                    CAIRO_FORMAT_ARGB32,
                                                                    buffer->width,
@@ -204,10 +255,33 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
             g_printerr("dump image data to %s\n", filename);
         }
 
+#else
+        pixman::Image image {
+            PIXMAN_a8r8g8b8,
+            buffer->width,
+            buffer->height,
+            buffer->data,
+            buffer->stride
+        };
+#endif
+
         auto* viewData = reinterpret_cast<ViewData*>(data);
+
+#if USE_CAIRO
         cairo::Context context { viewData->framebuffer.surface() };
         context.setSource(image);
         context.paint();
+#else
+        ::pixman_image_composite(PIXMAN_OP_SRC,
+                                 image.pointer(),
+                                 nullptr,
+                                 viewData->framebuffer.surface().pointer(),
+                                 0, 0,
+                                 0, 0,
+                                 0, 0,
+                                 image.width(),
+                                 image.height());
+#endif
 
         wpe_view_backend_exportable_shm_dispatch_frame_complete(viewData->exportable);
         wpe_view_backend_exportable_shm_dispatch_release_buffer(viewData->exportable, buffer);
@@ -216,11 +290,15 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
 int main()
 {
-    sDebug = getenv("WPE_DYZSHM_DEBUG") != nullptr;
-    sPNGPath = getenv("WPE_DUMP_PNG_PATH");
+    if (auto value = getenv("WPE_DYZSHM_DEBUG")) {
+        sDebug = strcmp(value, "0") != 0;
+    }
+    if (auto value = getenv("WPE_DUMP_PNG_PATH")) {
+        sPNGPath = value;
+    }
 
     FrameBuffer framebuffer;
-    if (!framebuffer) {
+    if (framebuffer.errored()) {
         g_printerr("Cannot initialize framebuffer: %s (%s)\n",
                    framebuffer.errorMessage(),
                    framebuffer.errorCause());
@@ -228,11 +306,12 @@ int main()
     }
 
     DEBUG(("Framebuffer '%s' @ %" PRIu32 "x%" PRIu32 " %" PRIu32 "bpp"
-           " (stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
+           " (%" PRIu32 ", stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
            framebuffer.devicePath(),
            framebuffer.xres(),
            framebuffer.yres(),
            framebuffer.bpp(),
+           framebuffer.rotation(),
            framebuffer.stride(),
            framebuffer.size(),
            framebuffer.constData()));

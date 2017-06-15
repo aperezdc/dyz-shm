@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.0)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fno-exceptions -fno-rtti")
 
 find_package(PkgConfig)
-pkg_check_modules(DYZSHM REQUIRED glib-2.0 wpe-webkit cairo)
+pkg_check_modules(DYZSHM REQUIRED glib-2.0 wpe-webkit pixman-1)
 
 add_executable(dyz-shm dyz-shm.cpp)
 target_include_directories(dyz-shm PUBLIC ${DYZSHM_INCLUDE_DIRS})
