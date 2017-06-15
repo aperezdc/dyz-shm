@@ -32,6 +32,7 @@ namespace cairo {
 
         inline Type* get() { return m_pointer; }
         inline Status status() const { return do_get_status(m_pointer); }
+        inline const char* statusString() const { return ::cairo_status_to_string(status()); }
         inline operator bool() const { return status() == CAIRO_STATUS_SUCCESS; }
 
     protected:

@@ -243,7 +243,7 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
                                                                    buffer->height,
                                                                    buffer->stride) };
         if (!image) {
-            g_printerr("Could not create cairo surface for SHM buffer\n");
+            g_printerr("Could not create cairo surface for SHM buffer: %s\n", image.statusString());
             return;
         }
 
