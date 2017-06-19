@@ -25,10 +25,12 @@
 #include <cstring>
 #include <cerrno>
 
-#ifdef USE_CAIRO
-#include "cairo.hh"
+#if GRAPHICS_CAIRO
+# include "cairo.hh"
+#elif GRAPHICS_PIXMAN
+# include "pixman.hh"
 #else
-#include "pixman.hh"
+# error No graphics backend
 #endif
 
 
@@ -43,10 +45,10 @@ static char* sPNGPath = nullptr;
 
 struct FrameBuffer {
 public:
-#ifdef USE_CAIRO
+#if GRAPHICS_CAIRO
     using SurfaceType = cairo::Surface;
     static constexpr const char* imageBackend { "cairo" };
-#else
+#elif GRAPHICS_PIXMAN
     using SurfaceType = pixman::Image;
     static constexpr const char* imageBackend { "pixman" };
 #endif
@@ -99,11 +101,6 @@ public:
             markError(imageBackend, "Cannot create device surface");
             return;
         }
-
-#if USE_CAIRO
-#else
-        m_surface->setTransform(pixman::Transform::rotate(90));
-#endif
     }
 
     bool updateScreenInfo() {
@@ -176,7 +173,7 @@ protected:
     }
 
     bool createSurface() {
-#ifdef USE_CAIRO
+#if GRAPHICS_CAIRO
         m_surface.reset(new SurfaceType(
             ::cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
                                                   CAIRO_FORMAT_RGB16_565,
@@ -184,7 +181,7 @@ protected:
                                                   yres(),
                                                   stride())));
         return m_surface->status() == CAIRO_STATUS_SUCCESS;
-#else
+#elif GRAPHICS_PIXMAN
         m_surface.reset(new SurfaceType(PIXMAN_r5g6b5,
                                         xres(),
                                         yres(),
@@ -236,7 +233,9 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
                buffer->height,
                buffer->stride));
 
-#if USE_CAIRO
+        auto* viewData = reinterpret_cast<ViewData*>(data);
+
+#if GRAPHICS_CAIRO
         cairo::Surface image { cairo_image_surface_create_for_data(static_cast<unsigned char*>(buffer->data),
                                                                    CAIRO_FORMAT_ARGB32,
                                                                    buffer->width,
@@ -255,7 +254,11 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
             g_printerr("dump image data to %s\n", filename);
         }
 
-#else
+        cairo::Context context { viewData->framebuffer.surface() };
+        context.rotate(image, cairo::Rotation::ClockWise90).source(image).paint();
+
+#elif GRAPHICS_PIXMAN
+
         pixman::Image image {
             PIXMAN_a8r8g8b8,
             buffer->width,
@@ -263,14 +266,8 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
             buffer->data,
             buffer->stride
         };
-#endif
 
-        auto* viewData = reinterpret_cast<ViewData*>(data);
-
-#if USE_CAIRO
-        cairo::Context context { viewData->framebuffer.surface() };
-        context.rotate(image, cairo::Rotation::ClockWise90).source(image).paint();
-#else
+        image->setTransform(pixman::Transform::rotate(90));
         ::pixman_image_composite(PIXMAN_OP_SRC,
                                  image.pointer(),
                                  nullptr,

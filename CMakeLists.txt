@@ -1,16 +1,27 @@
 cmake_minimum_required(VERSION 3.0)
 
-option(USE_CAIRO "Use Cairo instead of Pixman" ON)
+set(ALL_GRAPHICS
+	cairo
+	pixman
+)
+set(GRAPHICS "cairo" CACHE STRING "Choose the graphics backend (one of ${ALL_GRAPHICS}")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fno-exceptions -fno-rtti")
+list(FIND ALL_GRAPHICS ${GRAPHICS} RET)
+if (${RET} EQUAL -1)
+	message(FATAL_ERROR "Please choose a valid graphics backend (one of ${ALL_GRAPHICS}")
+endif ()
+
+string(TOUPPER ${GRAPHICS} GRAPHICS_MACRO_NAME)
+
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGRAPHICS_${GRAPHICS_MACRO_NAME}=1 -std=c++11 -fno-exceptions -fno-rtti")
 
 find_package(PkgConfig)
 pkg_check_modules(DYZSHM REQUIRED glib-2.0 wpe-webkit)
 
-if (USE_CAIRO)
+if (${GRAPHICS} STREQUAL "cairo")
 	pkg_check_modules(DYZSHM_EXTRA REQUIRED cairo)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_CAIRO=1")
-else ()
+elseif (${GRAPHICS} STREQUAL "pixman")
 	pkg_check_modules(DYZSHM_EXTRA REQUIRED pixman-1)
 endif ()
 
