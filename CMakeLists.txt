@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.0)
 set(ALL_GRAPHICS
 	cairo
 	pixman
+	simple
 )
 set(GRAPHICS "cairo" CACHE STRING "Choose the graphics backend (one of ${ALL_GRAPHICS}")
 

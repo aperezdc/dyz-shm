@@ -29,6 +29,8 @@
 # include "cairo.hh"
 #elif GRAPHICS_PIXMAN
 # include "pixman.hh"
+#elif GRAPHICS_SIMPLE
+# include "simplegfx.hh"
 #else
 # error No graphics backend
 #endif
@@ -51,6 +53,8 @@ public:
 #elif GRAPHICS_PIXMAN
     using SurfaceType = pixman::Image;
     static constexpr const char* imageBackend { "pixman" };
+#elif GRAPHICS_SIMPLE
+    static constexpr const char* imageBackend { "simple" };
 #endif
 
     FrameBuffer(const char* devicePath = nullptr) : m_devicePath(devicePath) {
@@ -154,11 +158,6 @@ public:
     inline const char* errorCause() const { return m_errorCause; }
     inline const char* devicePath() const { return m_devicePath; }
 
-    inline SurfaceType& surface() {
-        g_assert(m_surface != nullptr);
-        return *m_surface;
-    }
-
 protected:
     FrameBuffer(const FrameBuffer&) = delete; // Prevent copying;
     void operator=(const FrameBuffer&) = delete; // Prevent assignment.
@@ -188,6 +187,8 @@ protected:
                                         m_buffer,
                                         stride()));
         return !!m_surface;
+#elif GRAPHICS_SIMPLE
+        return true;
 #endif
     }
 
@@ -208,7 +209,15 @@ private:
     struct fb_fix_screeninfo m_fixInfo { };
     const char* m_devicePath;
 
+#if !GRAPHICS_SIMPLE
     std::unique_ptr<SurfaceType> m_surface { nullptr };
+
+public:
+    inline SurfaceType& surface() {
+        g_assert(m_surface != nullptr);
+        return *m_surface;
+    }
+#endif
 };
 
 
@@ -277,6 +286,20 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
                                  0, 0,
                                  image.width(),
                                  image.height());
+#elif GRAPHICS_SIMPLE
+        auto fbLines = viewData->framebuffer.yres();
+        auto fbColumns = viewData->framebuffer.xres();
+        auto fbStride = viewData->framebuffer.stride();
+        uint8_t* fbData = reinterpret_cast<uint8_t*>(viewData->framebuffer.data());
+        uint8_t* bufData = reinterpret_cast<uint8_t*>(buffer->data);
+
+        for (auto fbY = 0; fbY < fbLines; fbY++) {
+            uint16_t *fbLineData = reinterpret_cast<uint16_t*>(fbData + fbStride * fbY);
+            for (auto fbX = 0; fbX < fbColumns; fbX++) {
+                fbLineData[fbX] = simplegfx::Argb32toRgb565_v0(
+                    reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(buffer->data) + buffer->stride * fbX)[fbLines - fbY]);
+            }
+        }
 #endif
 
         wpe_view_backend_exportable_shm_dispatch_frame_complete(viewData->exportable);
