@@ -52,7 +52,7 @@ public:
 
     FrameBuffer(const char* devicePath = nullptr) : m_devicePath(devicePath) {
         if (!m_devicePath) {
-            if (auto value = getenv("WPE_FBDEV")) {
+            if (auto value = g_getenv("WPE_FBDEV")) {
                 m_devicePath = value;
             } else {
                 m_devicePath = "/dev/fb0";
@@ -302,10 +302,10 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
 int main(int argc, char *argv[])
 {
-    if (auto value = getenv("WPE_DYZSHM_DEBUG")) {
+    if (auto value = g_getenv("WPE_DYZSHM_DEBUG")) {
         Options.debug = strcmp(value, "0") != 0;
     }
-    if (auto value = getenv("WPE_DUMP_PNG_PATH")) {
+    if (auto value = g_getenv("WPE_DUMP_PNG_PATH")) {
         Options.pngPath = value;
     }
 
