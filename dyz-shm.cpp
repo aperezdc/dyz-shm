@@ -317,6 +317,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    DEBUG(("Dyz-SHM with %s graphics (built %s)\n",
+           FrameBuffer::imageBackend,
+           __DATE__));
     DEBUG(("Framebuffer '%s' @ %" PRIu32 "x%" PRIu32 " %" PRIu32 "bpp"
            " (%" PRIu32 ", stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
            framebuffer.devicePath(),
