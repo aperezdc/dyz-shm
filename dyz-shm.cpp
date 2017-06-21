@@ -337,14 +337,28 @@ int main(int argc, char *argv[])
     auto pageConfiguration = WKPageConfigurationCreate();
 
     {
+        auto preferences = WKPreferencesCreate();
+        WKPreferencesSetPluginsEnabled(preferences, false);
+        WKPreferencesSetJavaEnabled(preferences, false);
+        WKPreferencesSetTextAreasAreResizable(preferences, false);
+        WKPreferencesSetBackspaceKeyNavigationEnabled(preferences, false);
+        WKPreferencesSetFullScreenEnabled(preferences, true);
+        WKPreferencesSetDefaultFontSize(preferences, 9);
+        WKPreferencesSetDefaultFixedFontSize(preferences, 9);
+        if (auto value = g_getenv("WPE_DYZSHM_CONSOLE_LOG"))
+            WKPreferencesSetLogsPageMessagesToSystemConsoleEnabled(preferences, strcmp(value, "0") != 0);
+
         auto pageGroupIdentifier = WKStringCreateWithUTF8CString("WPEPageGroup");
         auto pageGroup = WKPageGroupCreateWithIdentifier(pageGroupIdentifier);
+
+        WKPageGroupSetPreferences(pageGroup, preferences);
 
         WKPageConfigurationSetContext(pageConfiguration, context);
         WKPageConfigurationSetPageGroup(pageConfiguration, pageGroup);
 
         WKRelease(pageGroup);
         WKRelease(pageGroupIdentifier);
+        WKRelease(preferences);
     }
 
     ViewData viewData { framebuffer, nullptr };
