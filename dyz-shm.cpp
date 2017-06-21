@@ -1,16 +1,7 @@
 #include <glib.h>
 #include <wpe-fdo/view-backend-exportable.h>
 
-#define BUILDING_WPE__
-
-#include <WebKit/WKContext.h>
-#include <WebKit/WKPage.h>
-#include <WebKit/WKPageGroup.h>
-#include <WebKit/WKPageConfigurationRef.h>
-#include <WebKit/WKString.h>
-#include <WebKit/WKType.h>
-#include <WebKit/WKURL.h>
-#include <WebKit/WKView.h>
+#include <WPE/WebKit.h>
 
 #include <fcntl.h>
 #include <linux/fb.h>
