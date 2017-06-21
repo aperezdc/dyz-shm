@@ -27,12 +27,14 @@
 #endif
 
 
-static bool  sDebug = false;
-static char* sPNGPath = nullptr;
+static struct {
+    bool debug;
+    const char* pngPath;
+} Options = { };
 
 #define DEBUG(args) \
     do { \
-        if (sDebug) { g_printerr args ; } \
+        if (Options.debug) { g_printerr args ; } \
     } while (0)
 
 
@@ -246,10 +248,10 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
             return;
         }
 
-        if (sPNGPath) {
+        if (Options.pngPath) {
             char filename[PATH_MAX];
             static int files = 0;
-            snprintf(filename, PATH_MAX, "%s/dump_%d.png", sPNGPath, files++);
+            snprintf(filename, PATH_MAX, "%s/dump_%d.png", Options.pngPath, files++);
             cairo_surface_write_to_png(image.get(), filename);
             g_printerr("dump image data to %s\n", filename);
         }
@@ -301,10 +303,10 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 int main(int argc, char *argv[])
 {
     if (auto value = getenv("WPE_DYZSHM_DEBUG")) {
-        sDebug = strcmp(value, "0") != 0;
+        Options.debug = strcmp(value, "0") != 0;
     }
     if (auto value = getenv("WPE_DUMP_PNG_PATH")) {
-        sPNGPath = value;
+        Options.pngPath = value;
     }
 
     FrameBuffer framebuffer;
