@@ -307,6 +307,17 @@ extern "C" {
 }
 
 
+static WKURLRef
+getFileURLDirectory(const char* url)
+{
+    char* dirPath = g_path_get_dirname(url + 7);  // strlen("file://") -> 7
+    DEBUG(("Path for %s -> %s\n", url, dirPath));
+    auto directoryString = WKURLCreateWithUTF8CString(dirPath);
+    g_free (dirPath);
+    return directoryString;
+}
+
+
 int main(int argc, char *argv[])
 {
     if (auto value = g_getenv("WPE_DYZSHM_DEBUG")) {
@@ -376,10 +387,21 @@ int main(int argc, char *argv[])
 
     auto* backend = wpe_view_backend_exportable_shm_get_view_backend(backendExportable);
     auto view = WKViewCreateWithViewBackend(backend, pageConfiguration);
+    auto page = WKViewGetPage(view);
 
     {
-        auto shellURL = WKURLCreateWithUTF8CString((argc > 1) ? argv[1] : "http://igalia.com");
-        WKPageLoadURL(WKViewGetPage(view), shellURL);
+        const auto url = (argc > 1) ? argv[1] : "http://igalia.com";
+        auto isFileURL = strncmp(url, "file://", 7) == 0;
+        auto shellURL = WKURLCreateWithUTF8CString(url);
+        if (isFileURL) {
+            auto dirPath = getFileURLDirectory(url);
+            DEBUG(("[status] Loading file URL: %s\n", url));
+            WKPageLoadFile(page, shellURL, dirPath);
+            WKRelease(dirPath);
+        } else {
+            DEBUG(("[status] Loading URL: %s\n", url));
+            WKPageLoadURL(page, shellURL);
+        }
         WKRelease(shellURL);
     }
 
