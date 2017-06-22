@@ -12,6 +12,15 @@
 #include <cmath>
 
 namespace pixman {
+    constexpr static const char* name = "pixman";
+
+    using Format = ::pixman_format_code_t;
+
+    namespace format {
+        constexpr Format ARGB32 = PIXMAN_a8r8g8b8;
+        constexpr Format RGB16_565 = PIXMAN_r5g6b5;
+    };
+
     template <typename T, typename R, R (*do_destroy)(T*)>
     class Ref {
     public:
@@ -39,20 +48,20 @@ namespace pixman {
 
     class Transform;
 
-    class Image : public Ref<pixman_image_t,
-                             pixman_bool_t,
-                             pixman_image_unref> {
+    class Surface : public Ref<pixman_image_t,
+                               pixman_bool_t,
+                               pixman_image_unref> {
     public:
-        Image(::pixman_format_code_t format,
-              uint32_t width,
-              uint32_t height,
-              void* bits,
-              uint32_t stride)
-            : Ref(::pixman_image_create_bits_no_clear(format,
-                                                      static_cast<int>(width),
-                                                      static_cast<int>(height),
-                                                      static_cast<uint32_t*>(bits),
-                                                      static_cast<int>(stride)))
+        Surface(Format format,
+                void* bits,
+                uint32_t width,
+                uint32_t height,
+                uint32_t stride)
+              : Ref(::pixman_image_create_bits_no_clear(format,
+                                                        static_cast<int>(width),
+                                                        static_cast<int>(height),
+                                                        static_cast<uint32_t*>(bits),
+                                                        static_cast<int>(stride)))
         {
         }
 
@@ -96,10 +105,10 @@ namespace pixman {
 
         ::pixman_f_transform_t m_transform;
 
-        friend class Image;
+        friend class Surface;
     };
 
-    void Image::setTransform(const Transform& xfrm) {
+    void Surface::setTransform(const Transform& xfrm) {
         const auto fx = xfrm.asFixed();
         ::pixman_image_set_transform(pointer(), &fx);
     }

@@ -11,6 +11,7 @@
 #include <cstdint>
 
 namespace simplegfx {
+    constexpr static const char* name = "simplegfx";
 
     static inline uint16_t Argb32toRgb565_v0(uint32_t argb) {
         return static_cast<uint16_t>((((argb >> 19) & 0x1F) << 11) |

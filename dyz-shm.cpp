@@ -18,10 +18,16 @@
 
 #if GRAPHICS_CAIRO
 # include "cairo.hh"
+# define GRAPHICS_NEEDS_DEVICE_SURFACE 1
+namespace gfx = cairo;
 #elif GRAPHICS_PIXMAN
 # include "pixman.hh"
+# define GRAPHICS_NEEDS_DEVICE_SURFACE 1
+namespace gfx = pixman;
 #elif GRAPHICS_SIMPLE
 # include "simplegfx.hh"
+# define GRAPHICS_NEEDS_DEVICE_SURFACE 0
+namespace gfx = simplegfx;
 #else
 # error No graphics backend
 #endif
@@ -40,16 +46,6 @@ static struct {
 
 struct FrameBuffer {
 public:
-#if GRAPHICS_CAIRO
-    using SurfaceType = cairo::Surface;
-    static constexpr const char* imageBackend { "cairo" };
-#elif GRAPHICS_PIXMAN
-    using SurfaceType = pixman::Image;
-    static constexpr const char* imageBackend { "pixman" };
-#elif GRAPHICS_SIMPLE
-    static constexpr const char* imageBackend { "simple" };
-#endif
-
     FrameBuffer(const char* devicePath = nullptr) : m_devicePath(devicePath) {
         if (!m_devicePath) {
             if (auto value = g_getenv("WPE_FBDEV")) {
@@ -95,7 +91,7 @@ public:
         }
 
         if (!createSurface()) {
-            markError(imageBackend, "Cannot create device surface");
+            markError(gfx::name, "Cannot create device surface");
             return;
         }
     }
@@ -165,22 +161,15 @@ protected:
     }
 
     bool createSurface() {
-#if GRAPHICS_CAIRO
-        m_surface.reset(new SurfaceType(
-            ::cairo_image_surface_create_for_data(static_cast<unsigned char*>(m_buffer),
-                                                  CAIRO_FORMAT_RGB16_565,
-                                                  xres(),
-                                                  yres(),
-                                                  stride())));
-        return m_surface->status() == CAIRO_STATUS_SUCCESS;
-#elif GRAPHICS_PIXMAN
-        m_surface.reset(new SurfaceType(PIXMAN_r5g6b5,
-                                        xres(),
-                                        yres(),
-                                        m_buffer,
-                                        stride()));
+#if GRAPHICS_NEEDS_DEVICE_SURFACE
+        // FIXME: Un-hardcode the framebuffer device surface format.
+        m_surface.reset(new gfx::Surface(gfx::format::RGB16_565,
+                                         m_buffer,
+                                         xres(),
+                                         yres(),
+                                         stride()));
         return !!m_surface;
-#elif GRAPHICS_SIMPLE
+#else
         return true;
 #endif
     }
@@ -202,11 +191,11 @@ private:
     struct fb_fix_screeninfo m_fixInfo { };
     const char* m_devicePath;
 
-#if !GRAPHICS_SIMPLE
-    std::unique_ptr<SurfaceType> m_surface { nullptr };
+#if GRAPHICS_NEEDS_DEVICE_SURFACE
+    std::unique_ptr<gfx::Surface> m_surface { nullptr };
 
 public:
-    inline SurfaceType& surface() {
+    inline gfx::Surface& surface() {
         g_assert(m_surface != nullptr);
         return *m_surface;
     }
@@ -237,12 +226,15 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
         auto* viewData = reinterpret_cast<ViewData*>(data);
 
+        gfx::Surface image {
+            gfx::format::ARGB32,
+            buffer->data,
+            static_cast<uint32_t>(buffer->width),
+            static_cast<uint32_t>(buffer->height),
+            static_cast<uint32_t>(buffer->stride)
+        };
+
 #if GRAPHICS_CAIRO
-        cairo::Surface image { cairo_image_surface_create_for_data(static_cast<unsigned char*>(buffer->data),
-                                                                   CAIRO_FORMAT_ARGB32,
-                                                                   buffer->width,
-                                                                   buffer->height,
-                                                                   buffer->stride) };
         if (!image) {
             g_printerr("Could not create cairo surface for SHM buffer: %s\n", image.statusString());
             return;
@@ -252,23 +244,14 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
             char filename[PATH_MAX];
             static int files = 0;
             snprintf(filename, PATH_MAX, "%s/dump_%d.png", Options.pngPath, files++);
-            cairo_surface_write_to_png(image.get(), filename);
+            cairo_surface_write_to_png(image.pointer(), filename);
             g_printerr("dump image data to %s\n", filename);
         }
 
-        cairo::Context context { viewData->framebuffer.surface() };
-        context.rotate(image, cairo::Rotation::ClockWise90).source(image).paint();
+        gfx::Context context { viewData->framebuffer.surface() };
+        context.rotate(image, gfx::Rotation::CounterClockWise90).source(image).paint();
 
 #elif GRAPHICS_PIXMAN
-
-        pixman::Image image {
-            PIXMAN_a8r8g8b8,
-            buffer->width,
-            buffer->height,
-            buffer->data,
-            buffer->stride
-        };
-
         image->setTransform(pixman::Transform::rotate(90));
         ::pixman_image_composite(PIXMAN_OP_SRC,
                                  image.pointer(),
@@ -373,9 +356,7 @@ int main(int argc, char *argv[])
         Options.pngPath = value;
     }
 
-    DEBUG(("Dyz-SHM with %s graphics (built %s)\n",
-           FrameBuffer::imageBackend,
-           __DATE__));
+    DEBUG(("Dyz-SHM with %s graphics (built %s)\n", gfx::name, __DATE__));
 
     FrameBuffer framebuffer;
     if (framebuffer.errored()) {
