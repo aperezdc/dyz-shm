@@ -300,6 +300,13 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
     },
 };
 
+
+// These are not declared in the headers, but they do exist in libWPEWebKit.
+extern "C" {
+    void WKPreferencesSetUniversalAccessFromFileURLsAllowed(WKPreferencesRef, bool);
+}
+
+
 int main(int argc, char *argv[])
 {
     if (auto value = g_getenv("WPE_DYZSHM_DEBUG")) {
@@ -344,6 +351,7 @@ int main(int argc, char *argv[])
         WKPreferencesSetTextAreasAreResizable(preferences, false);
         WKPreferencesSetBackspaceKeyNavigationEnabled(preferences, false);
         WKPreferencesSetFullScreenEnabled(preferences, true);
+        WKPreferencesSetUniversalAccessFromFileURLsAllowed(preferences, true);
         WKPreferencesSetDefaultFontSize(preferences, 9);
         WKPreferencesSetDefaultFixedFontSize(preferences, 9);
         if (auto value = g_getenv("WPE_DYZSHM_CONSOLE_LOG"))
