@@ -307,6 +307,52 @@ extern "C" {
 }
 
 
+static WKPageNavigationClientV0 NavigationClient = {
+    { 0, nullptr },
+    // decidePolicyForNavigationAction
+    [](WKPageRef, WKNavigationActionRef, WKFramePolicyListenerRef listener, WKTypeRef, const void*) {
+        WKFramePolicyListenerUse(listener);
+    },
+    // decidePolicyForNavigationResponse
+    [](WKPageRef, WKNavigationResponseRef, WKFramePolicyListenerRef listener, WKTypeRef, const void*) {
+        WKFramePolicyListenerUse(listener);
+    },
+    nullptr, // decidePolicyForPluginLoad
+    nullptr, // didStartProvisionalNavigation
+    nullptr, // didReceiveServerRedirectForProvisionalNavigation
+    nullptr, // didFailProvisionalNavigation
+    nullptr, // didCommitNavigation
+    nullptr, // didFinishNavigation
+    // didFailNavigation
+    [](WKPageRef, WKNavigationRef navigation, WKErrorRef error, WKTypeRef userData, const void*) {
+        DEBUG(("[status] Navigation failed.\n"));
+    },
+    nullptr, // didFailProvisionalLoadInSubframe
+    // didFinishDocumentLoad
+    [](WKPageRef page, WKNavigationRef, WKTypeRef, const void*) {
+        DEBUG(("[status] document load finished\n"));
+    },
+    nullptr, // didSameDocumentNavigation
+    nullptr, // renderingProgressDidChange
+    nullptr, // canAuthenticateAgainstProtectionSpace
+    nullptr, // didReceiveAuthenticationChallenge
+    // webProcessDidCrash
+    [](WKPageRef page, const void*) {
+        DEBUG(("[status] WebProcess crashed!\n"));
+        if (auto value = g_getenv("WPE_DYZSHM_NO_RELOAD_ON_CRASH")) {
+            if (strcmp(value, "0") != 0)
+                DEBUG(("[status] Reloading page...\n"));
+                WKPageReload(page);
+        }
+    },
+    nullptr, // copyWebCryptoMasterKey
+    nullptr, // didBeginNavigationGesture
+    nullptr, // willEndNavigationGesture
+    nullptr, // didEndNavigationGesture
+    nullptr, // didRemoveNavigationGestureSnapshot
+};
+
+
 static WKURLRef
 getFileURLDirectory(const char* url)
 {
@@ -388,6 +434,8 @@ int main(int argc, char *argv[])
     auto* backend = wpe_view_backend_exportable_shm_get_view_backend(backendExportable);
     auto view = WKViewCreateWithViewBackend(backend, pageConfiguration);
     auto page = WKViewGetPage(view);
+
+    WKPageSetPageNavigationClient(page, &NavigationClient.base);
 
     {
         const auto url = (argc > 1) ? argv[1] : "http://igalia.com";
