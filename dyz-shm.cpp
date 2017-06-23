@@ -35,6 +35,7 @@ namespace gfx = simplegfx;
 
 static struct {
     bool debug;
+    uint32_t fpsInterval;
     const char* pngPath;
 } Options = { };
 
@@ -280,6 +281,20 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
         wpe_view_backend_exportable_shm_dispatch_frame_complete(viewData->exportable);
         wpe_view_backend_exportable_shm_dispatch_release_buffer(viewData->exportable, buffer);
+
+        if (Options.fpsInterval > 0) {
+            static uint32_t sFrameCount = 0;
+            static gint64 sLastTime = g_get_monotonic_time();
+            ++sFrameCount;
+            gint64 time = g_get_monotonic_time();
+            if (time - sLastTime >= Options.fpsInterval * G_USEC_PER_SEC) {
+                double elapsedSeconds = static_cast<double>(time - sLastTime) / G_USEC_PER_SEC;
+                g_printerr("[fps] %4.2f (%" PRIu32 " frames in %.2fs)\n",
+                           sFrameCount / elapsedSeconds, sFrameCount, elapsedSeconds);
+                sFrameCount = 0;
+                sLastTime = time;
+            }
+        }
     },
 };
 
@@ -355,8 +370,21 @@ int main(int argc, char *argv[])
     if (auto value = g_getenv("WPE_DUMP_PNG_PATH")) {
         Options.pngPath = value;
     }
+    if (auto value = g_getenv("WPE_DYZSHM_SHOW_FPS")) {
+        char *end = nullptr;
+        auto valueAsUlong = std::strtoul(value, &end, 10);
+        if (*end != '\0' || (valueAsUlong == ULONG_MAX && errno == ERANGE)) {
+            g_printerr("Cannot convert '%s' to an unsigned integer\n", value);
+            return EXIT_FAILURE;
+        } else if (valueAsUlong > UINT32_MAX) {
+            g_printerr("Value '%s' is out of range, try a smaller value\n", value);
+            return EXIT_FAILURE;
+        }
+        Options.fpsInterval = valueAsUlong;
+    }
 
     DEBUG(("Dyz-SHM with %s graphics (built %s)\n", gfx::name, __DATE__));
+    DEBUG(("FPS reporting interval: %lu\n", Options.fpsInterval));
 
     FrameBuffer framebuffer;
     if (framebuffer.errored()) {
