@@ -326,12 +326,12 @@ static WKPageNavigationClientV0 NavigationClient = {
     nullptr, // didFinishNavigation
     // didFailNavigation
     [](WKPageRef, WKNavigationRef navigation, WKErrorRef error, WKTypeRef userData, const void*) {
-        DEBUG(("[status] Navigation failed.\n"));
+        g_warning("Navigation failed.");
     },
     nullptr, // didFailProvisionalLoadInSubframe
     // didFinishDocumentLoad
     [](WKPageRef page, WKNavigationRef, WKTypeRef, const void*) {
-        DEBUG(("[status] document load finished\n"));
+        g_message("Document load finished.");
     },
     nullptr, // didSameDocumentNavigation
     nullptr, // renderingProgressDidChange
@@ -339,10 +339,10 @@ static WKPageNavigationClientV0 NavigationClient = {
     nullptr, // didReceiveAuthenticationChallenge
     // webProcessDidCrash
     [](WKPageRef page, const void*) {
-        DEBUG(("[status] WebProcess crashed!\n"));
+        g_warning("WebProcess crashed!");
         if (auto value = g_getenv("WPE_DYZSHM_NO_RELOAD_ON_CRASH")) {
             if (strcmp(value, "0") != 0)
-                DEBUG(("[status] Reloading page...\n"));
+                g_warning("Reloading. Set WPE_DYZSHM_NO_RELOAD_ON_CRASH=1 to disable.");
                 WKPageReload(page);
         }
     },
@@ -358,7 +358,7 @@ static WKURLRef
 getFileURLDirectory(const char* url)
 {
     char* dirPath = g_path_get_dirname(url + 7);  // strlen("file://") -> 7
-    DEBUG(("Path for %s -> %s\n", url, dirPath));
+    g_debug("Path for %s -> %s\n", url, dirPath);
     auto directoryString = WKURLCreateWithUTF8CString(dirPath);
     g_free (dirPath);
     return directoryString;
@@ -389,8 +389,8 @@ int main(int argc, char *argv[])
         Options.fpsInterval = valueAsUlong;
     }
 
-    DEBUG(("Dyz-SHM with %s graphics (built %s)\n", gfx::name, __DATE__));
-    DEBUG(("FPS reporting interval: %lu\n", Options.fpsInterval));
+    g_debug("Dyz-SHM with %s graphics (built %s)", gfx::name, __DATE__);
+    g_debug("FPS reporting interval: %lu", Options.fpsInterval);
 
     FrameBuffer framebuffer;
     if (framebuffer.errored()) {
@@ -400,16 +400,16 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    DEBUG(("Framebuffer '%s' @ %" PRIu32 "x%" PRIu32 " %" PRIu32 "bpp"
-           " (%" PRIu32 ", stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
-           framebuffer.devicePath(),
-           framebuffer.xres(),
-           framebuffer.yres(),
-           framebuffer.bpp(),
-           framebuffer.rotation(),
-           framebuffer.stride(),
-           framebuffer.size(),
-           framebuffer.constData()));
+    g_debug("Framebuffer '%s' @ %" PRIu32 "x%" PRIu32 " %" PRIu32 "bpp"
+            " (%" PRIu32 ", stride %" PRIu32 ", size %" PRIu64 ", %p)\n",
+            framebuffer.devicePath(),
+            framebuffer.xres(),
+            framebuffer.yres(),
+            framebuffer.bpp(),
+            framebuffer.rotation(),
+            framebuffer.stride(),
+            framebuffer.size(),
+            framebuffer.constData());
 
     GMainLoop* loop = g_main_loop_new(g_main_context_default(), FALSE);
 
@@ -458,11 +458,11 @@ int main(int argc, char *argv[])
         auto shellURL = WKURLCreateWithUTF8CString(url);
         if (isFileURL) {
             auto dirPath = getFileURLDirectory(url);
-            DEBUG(("[status] Loading file URL: %s\n", url));
+            g_debug("Loading file URL: %s\n", url);
             WKPageLoadFile(page, shellURL, dirPath);
             WKRelease(dirPath);
         } else {
-            DEBUG(("[status] Loading URL: %s\n", url));
+            g_debug("Loading URL: %s\n", url);
             WKPageLoadURL(page, shellURL);
         }
         WKRelease(shellURL);
