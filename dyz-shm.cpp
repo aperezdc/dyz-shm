@@ -35,6 +35,7 @@ namespace gfx = simplegfx;
 
 static struct {
     bool debug;
+    bool suppressOutput;
     uint32_t fpsInterval;
     const char* pngPath;
 } Options = { };
@@ -227,57 +228,59 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
         auto* viewData = reinterpret_cast<ViewData*>(data);
 
-        gfx::Surface image {
-            gfx::format::ARGB32,
-            buffer->data,
-            static_cast<uint32_t>(buffer->width),
-            static_cast<uint32_t>(buffer->height),
-            static_cast<uint32_t>(buffer->stride)
-        };
+        if (!Options.suppressOutput) {
+            gfx::Surface image {
+                gfx::format::ARGB32,
+                    buffer->data,
+                    static_cast<uint32_t>(buffer->width),
+                    static_cast<uint32_t>(buffer->height),
+                    static_cast<uint32_t>(buffer->stride)
+            };
 
 #if GRAPHICS_CAIRO
-        if (!image) {
-            g_printerr("Could not create cairo surface for SHM buffer: %s\n", image.statusString());
-            return;
-        }
+            if (!image) {
+                g_printerr("Could not create cairo surface for SHM buffer: %s\n", image.statusString());
+                return;
+            }
 
-        if (Options.pngPath) {
-            char filename[PATH_MAX];
-            static int files = 0;
-            snprintf(filename, PATH_MAX, "%s/dump_%d.png", Options.pngPath, files++);
-            cairo_surface_write_to_png(image.pointer(), filename);
-            g_printerr("dump image data to %s\n", filename);
-        }
+            if (Options.pngPath) {
+                char filename[PATH_MAX];
+                static int files = 0;
+                snprintf(filename, PATH_MAX, "%s/dump_%d.png", Options.pngPath, files++);
+                cairo_surface_write_to_png(image.pointer(), filename);
+                g_printerr("dump image data to %s\n", filename);
+            }
 
-        gfx::Context context { viewData->framebuffer.surface() };
-        context.rotate(image, gfx::Rotation::CounterClockWise90).source(image).paint();
+            gfx::Context context { viewData->framebuffer.surface() };
+            context.rotate(image, gfx::Rotation::CounterClockWise90).source(image).paint();
 
 #elif GRAPHICS_PIXMAN
-        image->setTransform(pixman::Transform::rotate(90));
-        ::pixman_image_composite(PIXMAN_OP_SRC,
-                                 image.pointer(),
-                                 nullptr,
-                                 viewData->framebuffer.surface().pointer(),
-                                 0, 0,
-                                 0, 0,
-                                 0, 0,
-                                 image.width(),
-                                 image.height());
+            image->setTransform(pixman::Transform::rotate(90));
+            ::pixman_image_composite(PIXMAN_OP_SRC,
+                                     image.pointer(),
+                                     nullptr,
+                                     viewData->framebuffer.surface().pointer(),
+                                     0, 0,
+                                     0, 0,
+                                     0, 0,
+                                     image.width(),
+                                     image.height());
 #elif GRAPHICS_SIMPLE
-        auto fbLines = viewData->framebuffer.yres();
-        auto fbColumns = viewData->framebuffer.xres();
-        auto fbStride = viewData->framebuffer.stride();
-        uint8_t* fbData = reinterpret_cast<uint8_t*>(viewData->framebuffer.data());
-        uint8_t* bufData = reinterpret_cast<uint8_t*>(buffer->data);
+            auto fbLines = viewData->framebuffer.yres();
+            auto fbColumns = viewData->framebuffer.xres();
+            auto fbStride = viewData->framebuffer.stride();
+            uint8_t* fbData = reinterpret_cast<uint8_t*>(viewData->framebuffer.data());
+            uint8_t* bufData = reinterpret_cast<uint8_t*>(buffer->data);
 
-        for (auto fbY = 0; fbY < fbLines; fbY++) {
-            uint16_t *fbLineData = reinterpret_cast<uint16_t*>(fbData + fbStride * fbY);
-            for (auto fbX = 0; fbX < fbColumns; fbX++) {
-                fbLineData[fbX] = simplegfx::Argb32toRgb565_v0(
-                    reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(buffer->data) + buffer->stride * fbX)[fbLines - fbY]);
+            for (auto fbY = 0; fbY < fbLines; fbY++) {
+                uint16_t *fbLineData = reinterpret_cast<uint16_t*>(fbData + fbStride * fbY);
+                for (auto fbX = 0; fbX < fbColumns; fbX++) {
+                    fbLineData[fbX] = simplegfx::Argb32toRgb565_v0(
+                                                                   reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(buffer->data) + buffer->stride * fbX)[fbLines - fbY]);
+                }
             }
-        }
 #endif
+        }
 
         wpe_view_backend_exportable_shm_dispatch_frame_complete(viewData->exportable);
         wpe_view_backend_exportable_shm_dispatch_release_buffer(viewData->exportable, buffer);
@@ -366,6 +369,9 @@ int main(int argc, char *argv[])
 {
     if (auto value = g_getenv("WPE_DYZSHM_DEBUG")) {
         Options.debug = strcmp(value, "0") != 0;
+    }
+    if (auto value = g_getenv("WPE_DYZSHM_NO_OUTPUT")) {
+        Options.suppressOutput = strcmp(value, "0") != 0;
     }
     if (auto value = g_getenv("WPE_DUMP_PNG_PATH")) {
         Options.pngPath = value;
