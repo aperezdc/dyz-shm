@@ -230,7 +230,7 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
 
         if (!Options.suppressOutput) {
             gfx::Surface image {
-                gfx::format::ARGB32,
+                gfx::format::RGB16_565,
                     buffer->data,
                     static_cast<uint32_t>(buffer->width),
                     static_cast<uint32_t>(buffer->height),
