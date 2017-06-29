@@ -229,57 +229,99 @@ static struct wpe_view_backend_exportable_shm_client s_exportableSHMClient = {
         auto* viewData = reinterpret_cast<ViewData*>(data);
 
         if (!Options.suppressOutput) {
-            gfx::Surface image {
-                gfx::format::RGB16_565,
-                    buffer->data,
-                    static_cast<uint32_t>(buffer->width),
-                    static_cast<uint32_t>(buffer->height),
-                    static_cast<uint32_t>(buffer->stride)
-            };
+            if (viewData->framebuffer.xres() == buffer->width &&
+                viewData->framebuffer.yres() == buffer->height)
+            {
+                if (viewData->framebuffer.stride() == buffer->stride) {
+                    //
+                    // Width/Height/Stride of the framebuffer and the buffer
+                    // match, and a plain memcpy() can be used. Usually the
+                    // system libc provides a well-optimized implementation.
+                    //
+                    memcpy(viewData->framebuffer.data(), buffer->data, buffer->stride * buffer->height);
+                } else {
+                    //
+                    // Strides do not match: copy each row of pixels with
+                    // memcpy(), increasing pointers for using the stride size
+                    // corresponding to each of the surfaces.
+                    //
+                    // FIXME: This assumes that both the framebuffer and the
+                    //        rendered image have the same color depth.
+                    //
+                    const auto copyRowBytes = buffer->width * viewData->framebuffer.bpp() / 8;
+                    auto* frameBufferRow = static_cast<uint8_t*>(viewData->framebuffer.data());
+                    auto* imageBufferRow = static_cast<uint8_t*>(buffer->data);
+
+                    for (auto row = 0; row < buffer->height; row++) {
+                        memcpy(frameBufferRow, imageBufferRow, copyRowBytes);
+                        frameBufferRow += viewData->framebuffer.stride();
+                        imageBufferRow += buffer->stride;
+                    }
+                }
+            } else {
+                //
+                // Framebuffer and render buffer sizes do not match, which
+                // means rotating the rendered image buffer 90º for display
+                // is needed. We use Cairo for this.
+                //
+                // FIXME: This assumes that only rotation is needed, without
+                //        any scaling involved.
+                //
+                g_assert_cmpuint(viewData->framebuffer.xres(), ==, buffer->height);
+                g_assert_cmpuint(viewData->framebuffer.yres(), ==, buffer->width);
+
+                gfx::Surface image {
+                    gfx::format::RGB16_565,
+                        buffer->data,
+                        static_cast<uint32_t>(buffer->width),
+                        static_cast<uint32_t>(buffer->height),
+                        static_cast<uint32_t>(buffer->stride)
+                };
 
 #if GRAPHICS_CAIRO
-            if (!image) {
-                g_printerr("Could not create cairo surface for SHM buffer: %s\n", image.statusString());
-                return;
-            }
+                if (!image) {
+                    g_printerr("Could not create cairo surface for SHM buffer: %s\n", image.statusString());
+                    return;
+                }
 
-            if (Options.pngPath) {
-                char filename[PATH_MAX];
-                static int files = 0;
-                snprintf(filename, PATH_MAX, "%s/dump_%d.png", Options.pngPath, files++);
-                cairo_surface_write_to_png(image.pointer(), filename);
-                g_printerr("dump image data to %s\n", filename);
-            }
+                if (Options.pngPath) {
+                    char filename[PATH_MAX];
+                    static int files = 0;
+                    snprintf(filename, PATH_MAX, "%s/dump_%d.png", Options.pngPath, files++);
+                    cairo_surface_write_to_png(image.pointer(), filename);
+                    g_printerr("dump image data to %s\n", filename);
+                }
 
-            gfx::Context context { viewData->framebuffer.surface() };
-            context.rotate(image, gfx::Rotation::CounterClockWise90).source(image).paint();
+                gfx::Context context { viewData->framebuffer.surface() };
+                context.rotate(image, gfx::Rotation::CounterClockWise90).source(image).paint();
 
 #elif GRAPHICS_PIXMAN
-            image->setTransform(pixman::Transform::rotate(90));
-            ::pixman_image_composite(PIXMAN_OP_SRC,
-                                     image.pointer(),
-                                     nullptr,
-                                     viewData->framebuffer.surface().pointer(),
-                                     0, 0,
-                                     0, 0,
-                                     0, 0,
-                                     image.width(),
-                                     image.height());
+                image->setTransform(pixman::Transform::rotate(90));
+                ::pixman_image_composite(PIXMAN_OP_SRC,
+                                         image.pointer(),
+                                         nullptr,
+                                         viewData->framebuffer.surface().pointer(),
+                                         0, 0,
+                                         0, 0,
+                                         0, 0,
+                                         image.width(),
+                                         image.height());
 #elif GRAPHICS_SIMPLE
-            auto fbLines = viewData->framebuffer.yres();
-            auto fbColumns = viewData->framebuffer.xres();
-            auto fbStride = viewData->framebuffer.stride();
-            uint8_t* fbData = reinterpret_cast<uint8_t*>(viewData->framebuffer.data());
-            uint8_t* bufData = reinterpret_cast<uint8_t*>(buffer->data);
+                auto fbLines = viewData->framebuffer.yres();
+                auto fbColumns = viewData->framebuffer.xres();
+                auto fbStride = viewData->framebuffer.stride();
+                uint8_t* fbData = reinterpret_cast<uint8_t*>(viewData->framebuffer.data());
+                uint8_t* bufData = reinterpret_cast<uint8_t*>(buffer->data);
 
-            for (auto fbY = 0; fbY < fbLines; fbY++) {
-                uint16_t *fbLineData = reinterpret_cast<uint16_t*>(fbData + fbStride * fbY);
-                for (auto fbX = 0; fbX < fbColumns; fbX++) {
-                    fbLineData[fbX] = simplegfx::Argb32toRgb565_v0(
-                                                                   reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(buffer->data) + buffer->stride * fbX)[fbLines - fbY]);
+                for (auto fbY = 0; fbY < fbLines; fbY++) {
+                    uint16_t *fbLineData = reinterpret_cast<uint16_t*>(fbData + fbStride * fbY);
+                    for (auto fbX = 0; fbX < fbColumns; fbX++) {
+                        fbLineData[fbX] = simplegfx::Argb32toRgb565_v0(
+                                                                       reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(buffer->data) + buffer->stride * fbX)[fbLines - fbY]);
+                    }
                 }
-            }
 #endif
+            }
         }
 
         wpe_view_backend_exportable_shm_dispatch_frame_complete(viewData->exportable);
